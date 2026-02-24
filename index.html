@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conciliación Bancaria Avanzada - Valeria Acuña</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; color: #0f172a; }
+        
+        .report-header { display: none; }
+        
+        @media print {
+            .no-print { display: none !important; }
+            .report-header { display: block !important; border-bottom: 3px solid #0f172a; margin-bottom: 2rem; padding-bottom: 1rem; }
+            .print-container { padding: 0 !important; width: 100% !important; max-width: 100% !important; background: white !important; }
+            body { background: white; }
+            .result-card { border: 1px solid #e2e8f0 !important; box-shadow: none !important; }
+            .scroll-area { max-height: none !important; overflow: visible !important; }
+        }
+
+        .custom-loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #0f172a;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="p-4 md:p-10">
+
+    <div class="max-w-7xl mx-auto print-container">
+        
+        <!-- HEADER PARA PDF -->
+        <div class="report-header text-center">
+            <h1 class="text-4xl font-extrabold uppercase">Valeria Acuña</h1>
+            <p class="text-sm tracking-[0.3em] font-light text-slate-500 mb-4">SANEAMIENTO Y AUDITORÍA DE GESTIÓN</p>
+            <div class="grid grid-cols-3 gap-4 text-left border-t pt-4 mt-4">
+                <div><span class="text-[10px] font-bold uppercase block">Cliente</span><span id="p_cliente" class="text-lg"></span></div>
+                <div><span class="text-[10px] font-bold uppercase block">Banco</span><span id="p_banco" class="text-lg"></span></div>
+                <div><span class="text-[10px] font-bold uppercase block">Fecha</span><span id="p_fecha" class="text-lg"></span></div>
+            </div>
+        </div>
+
+        <!-- HEADER UI -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 no-print">
+            <div>
+                <h1 class="text-4xl font-black text-slate-900 tracking-tight">Valeria Acuña</h1>
+                <p class="text-xs font-bold text-blue-600 tracking-widest uppercase mt-1">Saneamiento y Auditoría v7.0</p>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="window.location.reload()" class="bg-white text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm border hover:bg-slate-50 transition">Reiniciar</button>
+                <button onclick="generarReporte()" id="btnReporte" class="hidden bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-black transition shadow-xl">Imprimir Reporte</button>
+            </div>
+        </div>
+
+        <!-- FORMULARIO DE DATOS -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 no-print">
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block tracking-widest">Nombre del Cliente</label>
+                <input type="text" id="nombreCliente" oninput="actualizarHeader()" placeholder="Ej: Fulano de Tal" class="w-full text-lg font-bold outline-none">
+            </div>
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block tracking-widest">Banco / Entidad</label>
+                <input type="text" id="entidadBancaria" oninput="actualizarHeader()" placeholder="Ej: Santander" class="w-full text-lg font-bold outline-none">
+            </div>
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block tracking-widest">Fecha Informe</label>
+                <input type="date" id="fechaInforme" oninput="actualizarHeader()" class="w-full text-lg font-bold outline-none">
+            </div>
+        </div>
+
+        <!-- ZONAS DE CARGA -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10 no-print">
+            <!-- ORIGEN A -->
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                    <h3 class="text-xs font-black text-slate-500 uppercase tracking-widest">Origen A: Extracto Bancario (PDF/Excel)</h3>
+                    <div id="loaderA" class="hidden custom-loader"></div>
+                </div>
+                <div class="p-6">
+                    <textarea id="txtA" placeholder="Pega aquí el contenido del extracto o usa el botón de adjuntar..." class="w-full h-48 p-4 text-xs font-mono bg-slate-50 rounded-xl mb-4 focus:ring-2 focus:ring-blue-100 outline-none transition resize-none"></textarea>
+                    <label class="block w-full text-center py-4 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition group">
+                        <span class="text-sm font-bold text-slate-500 group-hover:text-blue-600 transition">Adjuntar Archivo (PDF/Excel)</span>
+                        <input type="file" id="fileA" accept=".pdf,.xlsx,.xls,.csv" class="hidden" onchange="handleFile(this, 'txtA', 'loaderA')">
+                    </label>
+                </div>
+            </div>
+
+            <!-- ORIGEN B -->
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                    <h3 class="text-xs font-black text-slate-500 uppercase tracking-widest">Origen B: Libros Internos (Excel/CSV)</h3>
+                    <div id="loaderB" class="hidden custom-loader"></div>
+                </div>
+                <div class="p-6">
+                    <textarea id="txtB" placeholder="Pega aquí tus registros contables..." class="w-full h-48 p-4 text-xs font-mono bg-slate-50 rounded-xl mb-4 focus:ring-2 focus:ring-blue-100 outline-none transition resize-none"></textarea>
+                    <label class="block w-full text-center py-4 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition group">
+                        <span class="text-sm font-bold text-slate-500 group-hover:text-blue-600 transition">Adjuntar Archivo (Excel/CSV)</span>
+                        <input type="file" id="fileB" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleFile(this, 'txtB', 'loaderB')">
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- ACCION -->
+        <div class="text-center mb-12 no-print">
+            <button onclick="ejecutarAuditoria()" class="bg-slate-900 text-white px-12 py-5 rounded-2xl font-black tracking-widest hover:scale-105 transition-all shadow-2xl uppercase text-sm">
+                Realizar Conciliación
+            </button>
+        </div>
+
+        <!-- RESULTADOS -->
+        <div id="resultados" class="hidden space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <!-- CARDS RESUMEN -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="result-card bg-emerald-500 text-white p-6 rounded-2xl shadow-lg">
+                    <p class="text-[10px] font-black uppercase opacity-80 tracking-widest">Emparejados</p>
+                    <p id="res_ok" class="text-4xl font-black">0</p>
+                    <p class="text-[10px] mt-1 italic">Movimientos conciliados</p>
+                </div>
+                <div class="result-card bg-rose-500 text-white p-6 rounded-2xl shadow-lg">
+                    <p class="text-[10px] font-black uppercase opacity-80 tracking-widest">Sin Pareja</p>
+                    <p id="res_error" class="text-4xl font-black">0</p>
+                    <p class="text-[10px] mt-1 italic">Pendientes de revisión</p>
+                </div>
+                <div class="result-card bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Créditos Totales (A)</p>
+                    <p id="res_credA" class="text-2xl font-bold text-slate-800">$ 0</p>
+                </div>
+                <div class="result-card bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Débitos Totales (A)</p>
+                    <p id="res_debA" class="text-2xl font-bold text-slate-800">$ 0</p>
+                </div>
+            </div>
+
+            <!-- DETALLE DE PENDIENTES -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- COLUMNA A -->
+                <div>
+                    <div class="flex justify-between items-center mb-4 pb-2 border-b-2 border-rose-500">
+                        <h4 class="text-xs font-black text-slate-900 uppercase tracking-widest">Pendientes en Extracto (A)</h4>
+                        <span id="countA" class="bg-rose-100 text-rose-700 px-3 py-1 rounded-full text-[10px] font-bold">0 items</span>
+                    </div>
+                    <div id="listA" class="space-y-2 scroll-area max-h-96 overflow-y-auto pr-2"></div>
+                </div>
+
+                <!-- COLUMNA B -->
+                <div>
+                    <div class="flex justify-between items-center mb-4 pb-2 border-b-2 border-slate-800">
+                        <h4 class="text-xs font-black text-slate-900 uppercase tracking-widest">Pendientes en Libros (B)</h4>
+                        <span id="countB" class="bg-slate-200 text-slate-800 px-3 py-1 rounded-full text-[10px] font-bold">0 items</span>
+                    </div>
+                    <div id="listB" class="space-y-2 scroll-area max-h-96 overflow-y-auto pr-2"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+        const curr = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
+
+        // Inicializar fecha
+        document.getElementById('fechaInforme').valueAsDate = new Date();
+
+        function actualizarHeader() {
+            document.getElementById('p_cliente').innerText = document.getElementById('nombreCliente').value || '---';
+            document.getElementById('p_banco').innerText = document.getElementById('entidadBancaria').value || '---';
+            document.getElementById('p_fecha').innerText = document.getElementById('fechaInforme').value || '---';
+        }
+
+        async function handleFile(input, targetId, loaderId) {
+            const file = input.files[0];
+            if (!file) return;
+            const loader = document.getElementById(loaderId);
+            loader.classList.remove('hidden');
+
+            const ext = file.name.split('.').pop().toLowerCase();
+            const reader = new FileReader();
+
+            try {
+                if (ext === 'pdf') {
+                    reader.onload = async function() {
+                        const typedarray = new Uint8Array(this.result);
+                        const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                        let fullText = "";
+                        for(let i = 1; i <= pdf.numPages; i++) {
+                            const page = await pdf.getPage(i);
+                            const textContent = await page.getTextContent();
+                            fullText += textContent.items.map(item => item.str).join(' ') + "\n";
+                        }
+                        document.getElementById(targetId).value = fullText;
+                        loader.classList.add('hidden');
+                    };
+                    reader.readAsArrayBuffer(file);
+                } else {
+                    reader.onload = (e) => {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, {type: 'array'});
+                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                        
+                        // Extracción inteligente: Buscar columnas Debe/Haber y descartar Saldo
+                        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                        const headers = (jsonData[0] || []).map(h => String(h).toLowerCase());
+                        
+                        let debIdx = headers.findIndex(h => h.includes('deb') || h.includes('debe') || h.includes('retiro') || h.includes('salid'));
+                        let creIdx = headers.findIndex(h => h.includes('cred') || h.includes('haber') || h.includes('deposito') || h.includes('entrad'));
+                        let monIdx = headers.findIndex(h => h.includes('monto') || h.includes('importe') || h.includes('valor'));
+                        let salIdx = headers.findIndex(h => h.includes('saldo') || h.includes('balance'));
+
+                        let extracted = [];
+                        jsonData.forEach((row, i) => {
+                            if (i === 0) return;
+                            
+                            // Si detectamos columnas específicas, las tomamos con signo
+                            if (debIdx !== -1 && row[debIdx]) extracted.push(-Math.abs(cleanNum(row[debIdx])));
+                            if (creIdx !== -1 && row[creIdx]) extracted.push(Math.abs(cleanNum(row[creIdx])));
+                            
+                            // Si solo hay una columna de monto y una de saldo, ignoramos saldo
+                            if (monIdx !== -1 && monIdx !== salIdx) {
+                                extracted.push(cleanNum(row[monIdx]));
+                            } else if (monIdx === -1 && debIdx === -1) {
+                                // Fallback: tomar todo lo que parezca número pero no sea el saldo (última col habitualmente)
+                                row.forEach((cell, idx) => {
+                                    if (idx !== salIdx && isNumeric(cell)) extracted.push(cleanNum(cell));
+                                });
+                            }
+                        });
+
+                        document.getElementById(targetId).value = extracted.join('\n');
+                        loader.classList.add('hidden');
+                    };
+                    reader.readAsArrayBuffer(file);
+                }
+            } catch (err) {
+                console.error(err);
+                loader.classList.add('hidden');
+            }
+        }
+
+        function cleanNum(val) {
+            if (typeof val === 'number') return val;
+            let str = String(val).replace(/[^\d,.-]/g, '');
+            // Manejar formato Latino (1.234,56)
+            if (str.includes(',') && str.includes('.')) {
+                str = str.replace(/\./g, '').replace(',', '.');
+            } else if (str.includes(',')) {
+                str = str.replace(',', '.');
+            }
+            return parseFloat(str) || 0;
+        }
+
+        function isNumeric(n) { return !isNaN(parseFloat(n)) && isFinite(n); }
+
+        function ejecutarAuditoria() {
+            const dataA = parseTextArea('txtA');
+            const dataB = parseTextArea('txtB');
+
+            if (!dataA.length && !dataB.length) return;
+
+            // Totales de Origen A (Extracto)
+            const sumCreditosA = dataA.filter(n => n > 0).reduce((s, n) => s + n, 0);
+            const sumDebitosA = dataA.filter(n => n < 0).reduce((s, n) => s + n, 0);
+
+            // Conciliación de montos
+            // Nota: En contabilidad, lo que es Crédito en Banco es Débito en Libros (Signos opuestos)
+            let matchCount = 0;
+            let listA = [...dataA];
+            let listB = [...dataB];
+            
+            let finalA = [];
+            let finalB = [];
+
+            // Algoritmo de cruce por valor absoluto (más flexible para errores de signo)
+            listA.forEach(valA => {
+                const target = -valA; // Buscamos el opuesto exacto
+                const idx = listB.findIndex(valB => Math.abs(valB - target) < 0.01 || Math.abs(valB - valA) < 0.01);
+                
+                if (idx !== -1) {
+                    matchCount++;
+                    listB.splice(idx, 1); // Consumir el valor
+                } else {
+                    finalA.push(valA);
+                }
+            });
+            finalB = listB;
+
+            // UI
+            document.getElementById('resultados').classList.remove('hidden');
+            document.getElementById('btnReporte').classList.remove('hidden');
+            
+            document.getElementById('res_ok').innerText = matchCount;
+            document.getElementById('res_error').innerText = finalA.length + finalB.length;
+            document.getElementById('res_credA').innerText = curr.format(sumCreditosA);
+            document.getElementById('res_debA').innerText = curr.format(Math.abs(sumDebitosA));
+
+            renderList('listA', finalA, 'text-rose-600 font-bold');
+            renderList('listB', finalB, 'text-slate-800 font-medium');
+            
+            document.getElementById('countA').innerText = `${finalA.length} items`;
+            document.getElementById('countB').innerText = `${finalB.length} items`;
+            
+            actualizarHeader();
+            document.getElementById('resultados').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function parseTextArea(id) {
+            return document.getElementById(id).value
+                .split('\n')
+                .map(l => cleanNum(l.trim()))
+                .filter(n => n !== 0);
+        }
+
+        function renderList(id, items, textClass) {
+            const div = document.getElementById(id);
+            if (!items.length) {
+                div.innerHTML = `<div class="p-8 text-center border-2 border-dashed rounded-2xl text-slate-300 text-xs italic">Nada pendiente.</div>`;
+                return;
+            }
+            div.innerHTML = items.map(n => `
+                <div class="bg-white p-3 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center group hover:border-slate-300 transition">
+                    <span class="text-[9px] font-black uppercase text-slate-400 tracking-tighter">Movimiento Pendiente</span>
+                    <span class="${textClass} font-mono">${curr.format(n)}</span>
+                </div>
+            `).join('');
+        }
+
+        function generarReporte() {
+            actualizarHeader();
+            window.print();
+        }
+    </script>
+</body>
+</html>
